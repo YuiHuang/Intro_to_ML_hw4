@@ -46,8 +46,9 @@ model = models.resnet18(weights=None)
 model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)  # Adjust for grayscale
 model.fc = nn.Linear(model.fc.in_features, 7)  # Update for 7 classes (same as training)
 
+# Fix for FutureWarning
 state_dict = torch.load(weights_input_path, map_location=device)
-model.load_state_dict(state_dict, strict=True)  # Ensure weights are properly loaded
+model.load_state_dict(state_dict, strict=True)
 
 model = model.to(device)
 model.eval()
