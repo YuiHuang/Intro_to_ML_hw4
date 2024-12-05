@@ -46,28 +46,40 @@ for param in model.layer4.parameters():
 for param in model.fc.parameters():
     param.requires_grad = True
 
+
+# adjust learning rate
+mx_lr = 0.002
+weight_decay = 1e-4
+warm_up_epochs = 10
+lower_lr_patience = 3
+factor = 0.8
+
+# data selection
+train_fraction = 0.8
+subset_fraction = 0.25  # Use 50% of the training data in each epoch
+batch_size = 64
+
+# Training loop
+epochs = 100
+best_val_loss = float('inf')
+early_stop_patience = 6
+
+
+early_stopping_counter = 0
+
 # Loss and optimizer
 criterion = nn.CrossEntropyLoss(weight=class_weights_tensor.to(device))
-optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+optimizer = optim.Adam(model.parameters(), lr=mx_lr, weight_decay=weight_decay)
 
 # Scheduler with warm-up and ReduceLROnPlateau
 def lr_lambda(epoch):
-    if epoch < 5:
-        return epoch / 5  # Warm-up phase
+    if epoch < warm_up_epochs:
+        return epoch / warm_up_epochs  # Warm-up phase
     return 1
 
 warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
-plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.5)
+plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=lower_lr_patience, factor=factor)
 
-# Parameters for random subset
-train_fraction = 0.8
-subset_fraction = 0.5  # Use 50% of the training data in each epoch
-
-# Training loop
-epochs = 30
-best_val_loss = float('inf')
-patience = 5
-early_stopping_counter = 0
 
 for epoch in range(epochs):
     print(f"\nStart epoch {epoch + 1}/{epochs}")
@@ -86,8 +98,8 @@ for epoch in range(epochs):
     train_subset = Subset(train_subset, subset_indices)
 
     # Data loaders
-    train_loader = DataLoader(train_subset, batch_size=64, shuffle=True, num_workers=0, pin_memory=True)
-    val_loader = DataLoader(val_subset, batch_size=64, shuffle=False, num_workers=0, pin_memory=True)
+    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
+    val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True)
 
     # print(f"Training on {len(train_subset)} samples, validating on {len(val_subset)} samples.")
 
@@ -126,7 +138,7 @@ for epoch in range(epochs):
     print(f"Epoch {epoch + 1}, Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}%")
 
     # Adjust learning rate
-    if epoch < 5:
+    if epoch < warm_up_epochs:
         warmup_scheduler.step()  # Warm-up phase
     else:
         plateau_scheduler.step(val_loss)  # Reduce LR after warm-up
@@ -138,11 +150,11 @@ for epoch in range(epochs):
     if val_loss < best_val_loss:
         best_val_loss = val_loss
         early_stopping_counter = 0
-        torch.save(model.state_dict(), weights_output_path)
+        torch.save(model.state_dict(), f"{epoch+1}.pth")
         print(f"New best model saved with Validation Loss: {best_val_loss:.4f}")
     else:
         early_stopping_counter += 1
-        if early_stopping_counter >= patience:
+        if early_stopping_counter >= early_stop_patience:
             print("Early stopping triggered")
             break
 

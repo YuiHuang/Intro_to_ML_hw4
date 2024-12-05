@@ -1,3 +1,4 @@
+import argparse
 import torch
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms, models
@@ -8,9 +9,14 @@ from tqdm import tqdm
 import numpy as np
 import random
 
+# Argument parser
+parser = argparse.ArgumentParser(description="Inference script for emotion classification.")
+parser.add_argument("--id", type=str, required=True, help="Unique identifier for the submission.")
+args = parser.parse_args()
+
 # Paths
 train_dir = "../data/Images/train"
-weights_output_path = "best_weights.pth"
+weights_output_path = f"../submissions/{id}/"
 
 # Data transformations
 transform = transforms.Compose([
@@ -48,11 +54,11 @@ for param in model.fc.parameters():
 
 
 # adjust learning rate
-mx_lr = 0.001
-weight_decay=1e-4
-warm_up_epochs = 5
+mx_lr = 0.002
+weight_decay = 1e-4
+warm_up_epochs = 10
 lower_lr_patience = 3
-factor = 0.5
+factor = 0.8
 
 # data selection
 train_fraction = 0.8
@@ -60,9 +66,9 @@ subset_fraction = 0.25  # Use 50% of the training data in each epoch
 batch_size = 64
 
 # Training loop
-epochs = 30
+epochs = 100
 best_val_loss = float('inf')
-early_stop_patience = 5
+early_stop_patience = 7
 
 
 early_stopping_counter = 0
@@ -146,12 +152,13 @@ for epoch in range(epochs):
     # Debug: Print learning rate
     print(f"Learning rate for epoch {epoch + 1}: {optimizer.param_groups[0]['lr']:.6f}")
 
+    torch.save(model.state_dict(), f"{weights_output_path}{epoch+1}.pth")
+
     # Early stopping
     if val_loss < best_val_loss:
         best_val_loss = val_loss
         early_stopping_counter = 0
-        torch.save(model.state_dict(), f"{epoch+1}_{val_loss}.pth")
-        print(f"New best model saved with Validation Loss: {best_val_loss:.4f}")
+        print(f"New best model with Validation Loss: {best_val_loss:.4f}")
     else:
         early_stopping_counter += 1
         if early_stopping_counter >= early_stop_patience:

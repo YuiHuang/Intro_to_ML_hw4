@@ -1,3 +1,4 @@
+import argparse
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms, models
@@ -6,12 +7,19 @@ from PIL import Image
 import os
 import pandas as pd
 
+# Argument parser
+parser = argparse.ArgumentParser(description="Inference script for emotion classification.")
+parser.add_argument("--id", type=str, required=True, help="Unique identifier for the submission.")
+parser.add_argument("--tar", type=str, required=True, help="Weights file name (without extension).")
+args = parser.parse_args()
+
 # Paths
-id = "1205_2205"
-tar_weights = "17"
+id = args.id
+tar = args.tar
+path = ""  # f"../submissions/{id}/"
 test_dir = "../data/Images/test"  # Update to your test directory path
-weights_input_path = f"{tar_weights}.pth"
-submission_output_path = f"{id}_{tar_weights}.csv"
+weights_input_path = f"{path}{tar}.pth"
+submission_output_path = f"{path}{id}_{tar}.csv"
 
 # Data transformations
 transform = transforms.Compose([
