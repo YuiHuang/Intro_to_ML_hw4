@@ -44,7 +44,10 @@ test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = models.resnet18(weights=None)
 model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)  # Adjust for grayscale
-model.fc = nn.Linear(model.fc.in_features, 7)  # Update for 7 classes (same as training)
+model.fc = nn.Sequential(
+    nn.Dropout(p=0.5),  # Dropout added during inference
+    nn.Linear(model.fc.in_features, 7)  # Update for number of classes
+)
 
 # Fix for FutureWarning
 state_dict = torch.load(weights_input_path, map_location=device)
