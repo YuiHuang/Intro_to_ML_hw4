@@ -1,14 +1,15 @@
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms, models
+import torch.nn as nn
 from PIL import Image
 import os
 import pandas as pd
 
 # Paths
-test_dir = "data/Images/test"  # Update to your test directory path
+test_dir = "../data/Images/test"  # Update to your test directory path
 weights_input_path = "trained_weights.pth"
-submission_output_path = "processed_submission.csv"
+submission_output_path = "submission.csv"
 
 # Data transformations
 transform = transforms.Compose([
@@ -44,7 +45,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = models.resnet18(weights=None)
 model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)  # Adjust for grayscale
 model.fc = nn.Linear(model.fc.in_features, 7)  # Update for 7 classes (same as training)
-model.load_state_dict(torch.load(weights_input_path, map_location=device))
+
+state_dict = torch.load(weights_input_path, map_location=device)
+model.load_state_dict(state_dict, strict=True)  # Ensure weights are properly loaded
+
 model = model.to(device)
 model.eval()
 

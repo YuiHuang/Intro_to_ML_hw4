@@ -7,7 +7,7 @@ from tqdm import tqdm
 import os
 
 # Paths
-train_dir = "data/Images/train"  # Update to your train directory path
+train_dir = "../data/Images/train"  # Update to your train directory path
 weights_output_path = "trained_weights.pth"
 
 # Data transformations
