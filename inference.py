@@ -8,7 +8,7 @@ import pandas as pd
 
 # Paths
 test_dir = "../data/Images/test"  # Update to your test directory path
-weights_input_path = "trained_weights.pth"
+weights_input_path = "best_weights.pth"
 submission_output_path = "submission.csv"
 
 # Data transformations
