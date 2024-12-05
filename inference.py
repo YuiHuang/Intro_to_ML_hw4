@@ -7,9 +7,11 @@ import os
 import pandas as pd
 
 # Paths
+id = "1205_2205"
+tar_weights = "17"
 test_dir = "../data/Images/test"  # Update to your test directory path
-weights_input_path = "best_weights.pth"
-submission_output_path = "submission.csv"
+weights_input_path = f"{tar_weights}.pth"
+submission_output_path = f"{id}_{tar_weights}.csv"
 
 # Data transformations
 transform = transforms.Compose([
