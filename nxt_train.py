@@ -10,6 +10,7 @@ from tqdm import tqdm
 import numpy as np
 import random
 import sys
+import os
 
 # Argument parser
 parser = argparse.ArgumentParser(description="Inference script for emotion classification.")
@@ -20,6 +21,8 @@ args = parser.parse_args()
 train_dir = "../data/Images/train"
 id = args.id
 output_path = f"../submissions/{id}/"
+os.makedirs(os.path.dirname(f"../submissions/{id}"), exist_ok=True)
+os.makedirs(os.path.dirname(f"{output_path}log_{id}.txt"), exist_ok=True)
 
 # print(f"{output_path}{1}.pth")
 
@@ -29,6 +32,18 @@ output_file = f"{output_path}log_{id}.txt"
 output_file_handle = open(output_file, "w")
 original_stdout = sys.stdout  # Save the original stdout
 sys.stdout = output_file_handle  # Redirect stdout to the file
+
+
+def calculate_class_distribution(dataset, dataset_name):
+    class_counts = {class_name: 0 for class_name in full_dataset.classes}
+    for _, label in dataset:
+        class_name = full_dataset.classes[label]
+        class_counts[class_name] += 1
+    print(f"\nClass distribution for {dataset_name}:")
+    for class_name, count in class_counts.items():
+        print(f"  {class_name}: {count} images")
+    return class_counts
+
 
 # Data transformations
 transform = transforms.Compose([
@@ -40,6 +55,7 @@ transform = transforms.Compose([
 
 # Load full dataset
 full_dataset = datasets.ImageFolder(train_dir, transform=transform)
+# calculate_class_distribution(full_dataset, "Original Dataset")
 
 # Compute class weights
 class_weights = compute_class_weight('balanced', classes=np.unique(full_dataset.targets), y=full_dataset.targets)
@@ -66,11 +82,11 @@ for param in model.fc.parameters():
 
 
 # adjust learning rate
-mx_lr = 0.002
+mx_lr = 0.001
 weight_decay = 1e-4
-warm_up_epochs = 20
-lower_lr_patience = 3
-factor = 0.8
+warm_up_epochs = 10
+lower_lr_patience = 1
+factor = 0.9
 
 # data selection
 train_fraction = 0.8
@@ -119,6 +135,7 @@ train_indices, val_indices = stratified_split(full_dataset, train_fraction=0.8)
 # Subsets
 train_subset = Subset(full_dataset, train_indices)
 val_subset = Subset(full_dataset, val_indices)
+# calculate_class_distribution(val_subset, "Validation Dataset")
 
 val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True)
 
