@@ -16,7 +16,7 @@ args = parser.parse_args()
 # Paths
 id = args.id
 tar = args.tar
-path = ""  # f"../submissions/{id}/"
+path = f"../submissions/{id}/"
 test_dir = "../data/Images/test"  # Update to your test directory path
 weights_input_path = f"{path}{tar}.pth"
 submission_output_path = f"{path}{id}_{tar}.csv"

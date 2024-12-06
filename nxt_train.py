@@ -4,10 +4,12 @@ from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms, models
 import torch.nn as nn
 import torch.optim as optim
+from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.utils.class_weight import compute_class_weight
 from tqdm import tqdm
 import numpy as np
 import random
+import sys
 
 # Argument parser
 parser = argparse.ArgumentParser(description="Inference script for emotion classification.")
@@ -16,7 +18,17 @@ args = parser.parse_args()
 
 # Paths
 train_dir = "../data/Images/train"
-weights_output_path = f"../submissions/{id}/"
+id = args.id
+output_path = f"../submissions/{id}/"
+
+# print(f"{output_path}{1}.pth")
+
+# File to save the output
+output_file = f"{output_path}log_{id}.txt"
+# Open the file and redirect stdout
+output_file_handle = open(output_file, "w")
+original_stdout = sys.stdout  # Save the original stdout
+sys.stdout = output_file_handle  # Redirect stdout to the file
 
 # Data transformations
 transform = transforms.Compose([
@@ -56,19 +68,19 @@ for param in model.fc.parameters():
 # adjust learning rate
 mx_lr = 0.002
 weight_decay = 1e-4
-warm_up_epochs = 10
+warm_up_epochs = 20
 lower_lr_patience = 3
 factor = 0.8
 
 # data selection
 train_fraction = 0.8
-subset_fraction = 0.25  # Use 50% of the training data in each epoch
+subset_fraction = 0.5
 batch_size = 64
 
 # Training loop
-epochs = 100
+epochs = 1000
 best_val_loss = float('inf')
-early_stop_patience = 7
+early_stop_patience = 1000
 
 
 early_stopping_counter = 0
@@ -86,26 +98,41 @@ def lr_lambda(epoch):
 warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=lower_lr_patience, factor=factor)
 
+# # Randomly split dataset into training and validation sets
+# dataset_size = len(full_dataset)
+# indices = np.random.permutation(dataset_size)
+# train_size = int(train_fraction * dataset_size)
+# train_indices, val_indices = indices[:train_size], indices[train_size:]
+# train_subset = Subset(full_dataset, train_indices)
+# val_subset = Subset(full_dataset, val_indices)
+
+# Stratified split
+def stratified_split(dataset, train_fraction, random_seed=42):
+    targets = [dataset.targets[i] for i in range(len(dataset))]
+    splitter = StratifiedShuffleSplit(n_splits=1, test_size=1 - train_fraction, random_state=random_seed)
+    train_indices, val_indices = next(splitter.split(np.zeros(len(targets)), targets))
+    return train_indices, val_indices
+
+# Stratified splitting
+train_indices, val_indices = stratified_split(full_dataset, train_fraction=0.8)
+
+# Subsets
+train_subset = Subset(full_dataset, train_indices)
+val_subset = Subset(full_dataset, val_indices)
+
+val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True)
+
 
 for epoch in range(epochs):
     print(f"\nStart epoch {epoch + 1}/{epochs}")
     
-    # Randomly split dataset into training and validation sets
-    dataset_size = len(full_dataset)
-    indices = np.random.permutation(dataset_size)
-    train_size = int(train_fraction * dataset_size)
-    train_indices, val_indices = indices[:train_size], indices[train_size:]
-    train_subset = Subset(full_dataset, train_indices)
-    val_subset = Subset(full_dataset, val_indices)
-
     # Randomly select a subset of training data
     subset_size = int(len(train_subset) * subset_fraction)
     subset_indices = random.sample(range(len(train_subset)), subset_size)
-    train_subset = Subset(train_subset, subset_indices)
+    cur_train_subset = Subset(train_subset, subset_indices)
 
     # Data loaders
-    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
-    val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True)
+    train_loader = DataLoader(cur_train_subset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
 
     # print(f"Training on {len(train_subset)} samples, validating on {len(val_subset)} samples.")
 
@@ -152,7 +179,7 @@ for epoch in range(epochs):
     # Debug: Print learning rate
     print(f"Learning rate for epoch {epoch + 1}: {optimizer.param_groups[0]['lr']:.6f}")
 
-    torch.save(model.state_dict(), f"{weights_output_path}{epoch+1}.pth")
+    torch.save(model.state_dict(), f"{output_path}{epoch+1}.pth")
 
     # Early stopping
     if val_loss < best_val_loss:
@@ -166,3 +193,10 @@ for epoch in range(epochs):
             break
 
 print("Training complete")
+
+# Restore the original stdout
+sys.stdout = original_stdout
+output_file_handle.close()  # Close the file
+
+# Confirmation
+print(f"Output has been saved to {output_file}")
