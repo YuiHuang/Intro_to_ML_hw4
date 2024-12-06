@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.utils.class_weight import compute_class_weight
+from sklearn.metrics import classification_report
 from tqdm import tqdm
 import numpy as np
 import random
@@ -47,10 +48,12 @@ def calculate_class_distribution(dataset, dataset_name):
 
 # Data transformations
 transform = transforms.Compose([
-    transforms.Grayscale(),  # Ensure images are grayscale
+    transforms.Grayscale(),
     transforms.Resize((48, 48)),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(10),
     transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))  # Normalize grayscale images
+    transforms.Normalize((0.5,), (0.5,))
 ])
 
 # Load full dataset
@@ -67,8 +70,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
 model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
 model.fc = nn.Sequential(
-    nn.Dropout(p=0.5),
-    nn.Linear(model.fc.in_features, len(full_dataset.classes))
+    nn.BatchNorm1d(model.fc.in_features),  # Batch Normalization
+    nn.Dropout(p=0.5),                     # Regularization after normalization
+    nn.Linear(model.fc.in_features, 256),  # Intermediate Fully Connected Layer
+    nn.ReLU(),                             # Non-linearity
+    nn.Dropout(p=0.3),                     # Regularization after activation
+    nn.Linear(256, len(full_dataset.classes))  # Final Fully Connected Layer
 )
 model = model.to(device)
 
@@ -85,8 +92,8 @@ for param in model.fc.parameters():
 
 # adjust learning rate
 mx_lr = 0.002
-weight_decay = 1e-3
-warm_up_epochs = 0
+weight_decay = 1e-2
+warm_up_epochs = 10
 lower_lr_patience = 2
 factor = 0.8
 
@@ -187,6 +194,17 @@ for epoch in range(epochs):
             _, predicted = torch.max(outputs, 1)
             correct += (predicted == labels).sum().item()
             total += labels.size(0)
+
+    y_true = []
+    y_pred = []
+    with torch.no_grad():
+        for images, labels in val_loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            _, predicted = torch.max(outputs, 1)
+            y_true.extend(labels.cpu().numpy())
+            y_pred.extend(predicted.cpu().numpy())
+    print(classification_report(y_true, y_pred, target_names=full_dataset.classes))
 
     val_loss /= len(val_loader)
     val_accuracy = 100 * correct / total
