@@ -73,6 +73,8 @@ model.fc = nn.Sequential(
 model = model.to(device)
 
 # Fine-tune deeper layers
+for param in model.layer2.parameters():
+    param.requires_grad = True
 for param in model.layer3.parameters():
     param.requires_grad = True
 for param in model.layer4.parameters():
@@ -82,11 +84,11 @@ for param in model.fc.parameters():
 
 
 # adjust learning rate
-mx_lr = 0.0005
-weight_decay = 1e-4
+mx_lr = 0.002
+weight_decay = 1e-3
 warm_up_epochs = 0
-lower_lr_patience = 1
-factor = 0.9
+lower_lr_patience = 2
+factor = 0.8
 
 # data selection
 train_fraction = 0.8
@@ -100,6 +102,7 @@ early_stop_patience = 1000
 
 
 early_stopping_counter = 0
+seed = int(id[5:])
 
 # Loss and optimizer
 criterion = nn.CrossEntropyLoss(weight=class_weights_tensor.to(device))
@@ -123,14 +126,15 @@ plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='
 # val_subset = Subset(full_dataset, val_indices)
 
 # Stratified split
-def stratified_split(dataset, train_fraction, random_seed=42):
+def stratified_split(dataset, train_fraction, random_seed=seed):
+    print(f"seed: {random_seed}")
     targets = [dataset.targets[i] for i in range(len(dataset))]
     splitter = StratifiedShuffleSplit(n_splits=1, test_size=1 - train_fraction, random_state=random_seed)
     train_indices, val_indices = next(splitter.split(np.zeros(len(targets)), targets))
     return train_indices, val_indices
 
 # Stratified splitting
-train_indices, val_indices = stratified_split(full_dataset, train_fraction=0.8)
+train_indices, val_indices = stratified_split(full_dataset, train_fraction=train_fraction)
 
 # Subsets
 train_subset = Subset(full_dataset, train_indices)
@@ -145,6 +149,7 @@ for epoch in range(epochs):
     
     # Randomly select a subset of training data
     subset_size = int(len(train_subset) * subset_fraction)
+    random.seed(seed + epoch)
     subset_indices = random.sample(range(len(train_subset)), subset_size)
     cur_train_subset = Subset(train_subset, subset_indices)
 

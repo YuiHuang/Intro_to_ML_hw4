@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.utils.class_weight import compute_class_weight
+from sklearn.metrics import classification_report
 from tqdm import tqdm
 import numpy as np
 import random
@@ -47,10 +48,12 @@ def calculate_class_distribution(dataset, dataset_name):
 
 # Data transformations
 transform = transforms.Compose([
-    transforms.Grayscale(),  # Ensure images are grayscale
+    transforms.Grayscale(),
     transforms.Resize((48, 48)),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(10),
     transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))  # Normalize grayscale images
+    transforms.Normalize((0.5,), (0.5,))
 ])
 
 # Load full dataset
@@ -67,12 +70,18 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
 model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
 model.fc = nn.Sequential(
-    nn.Dropout(p=0.5),
-    nn.Linear(model.fc.in_features, len(full_dataset.classes))
+    nn.BatchNorm1d(model.fc.in_features),  # Batch Normalization
+    nn.Dropout(p=0.5),                     # Regularization after normalization
+    nn.Linear(model.fc.in_features, 256),  # Intermediate Fully Connected Layer
+    nn.ReLU(),                             # Non-linearity
+    nn.Dropout(p=0.3),                     # Regularization after activation
+    nn.Linear(256, len(full_dataset.classes))  # Final Fully Connected Layer
 )
 model = model.to(device)
 
 # Fine-tune deeper layers
+for param in model.layer2.parameters():
+    param.requires_grad = True
 for param in model.layer3.parameters():
     param.requires_grad = True
 for param in model.layer4.parameters():
@@ -82,11 +91,11 @@ for param in model.fc.parameters():
 
 
 # adjust learning rate
-mx_lr = 0.001
-weight_decay = 1e-4
+mx_lr = 0.002
+weight_decay = 1e-2
 warm_up_epochs = 10
-lower_lr_patience = 1
-factor = 0.9
+lower_lr_patience = 2
+factor = 0.8
 
 # data selection
 train_fraction = 0.8
@@ -100,6 +109,7 @@ early_stop_patience = 1000
 
 
 early_stopping_counter = 0
+seed = int(id[5:])
 
 # Loss and optimizer
 criterion = nn.CrossEntropyLoss(weight=class_weights_tensor.to(device))
@@ -123,14 +133,15 @@ plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='
 # val_subset = Subset(full_dataset, val_indices)
 
 # Stratified split
-def stratified_split(dataset, train_fraction, random_seed=42):
+def stratified_split(dataset, train_fraction, random_seed=seed):
+    print(f"seed: {random_seed}")
     targets = [dataset.targets[i] for i in range(len(dataset))]
     splitter = StratifiedShuffleSplit(n_splits=1, test_size=1 - train_fraction, random_state=random_seed)
     train_indices, val_indices = next(splitter.split(np.zeros(len(targets)), targets))
     return train_indices, val_indices
 
 # Stratified splitting
-train_indices, val_indices = stratified_split(full_dataset, train_fraction=0.8)
+train_indices, val_indices = stratified_split(full_dataset, train_fraction=train_fraction)
 
 # Subsets
 train_subset = Subset(full_dataset, train_indices)
@@ -145,6 +156,7 @@ for epoch in range(epochs):
     
     # Randomly select a subset of training data
     subset_size = int(len(train_subset) * subset_fraction)
+    random.seed(seed + epoch)
     subset_indices = random.sample(range(len(train_subset)), subset_size)
     cur_train_subset = Subset(train_subset, subset_indices)
 
@@ -182,6 +194,17 @@ for epoch in range(epochs):
             _, predicted = torch.max(outputs, 1)
             correct += (predicted == labels).sum().item()
             total += labels.size(0)
+
+    y_true = []
+    y_pred = []
+    with torch.no_grad():
+        for images, labels in val_loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            _, predicted = torch.max(outputs, 1)
+            y_true.extend(labels.cpu().numpy())
+            y_pred.extend(predicted.cpu().numpy())
+    print(classification_report(y_true, y_pred, target_names=full_dataset.classes))
 
     val_loss /= len(val_loader)
     val_accuracy = 100 * correct / total
