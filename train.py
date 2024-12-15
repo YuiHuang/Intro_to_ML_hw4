@@ -1,6 +1,6 @@
 import argparse
 import torch
-from torch.utils.data import DataLoader, SubsetRandomSampler, WeightedRandomSampler
+from torch.utils.data import DataLoader, SubsetRandomSampler
 from torchvision import datasets, transforms
 import torch.nn as nn
 import torch.optim as optim
@@ -58,7 +58,7 @@ if __name__ == "__main__":
         # Hyperparameters
         batch_size = 64
         epochs = 500
-        lr = 0.01
+        lr = 0.001
 
         # Data transformations with augmentation
         transform = transforms.Compose([
@@ -71,30 +71,25 @@ if __name__ == "__main__":
             transforms.Normalize((0.5,), (0.5,))
         ])
 
-        # Dataset and Weighted Sampler
+        # Load dataset
         full_dataset = datasets.ImageFolder(train_dir, transform=transform)
 
-        # Balancing dataset by duplicating smaller classes
+        # Oversample smaller classes
         class_counts = Counter([sample[1] for sample in full_dataset.samples])
         max_class_count = max(class_counts.values())
 
         balanced_samples = []
         for class_idx in range(len(full_dataset.classes)):
-            # Get all samples for the current class
             class_samples = [sample for sample in full_dataset.samples if sample[1] == class_idx]
-            
-            # Duplicate samples to match the size of the largest class
             num_to_add = max_class_count - len(class_samples)
             if num_to_add > 0:
                 duplicated_samples = random.choices(class_samples, k=num_to_add)
                 class_samples.extend(duplicated_samples)
-            
             balanced_samples.extend(class_samples)
 
-        # Create a new balanced dataset
+        # Update dataset with balanced samples
         full_dataset.samples = balanced_samples
-        # print(f"Balanced dataset class distribution: {Counter([sample[1] for sample in full_dataset.samples])}")
-        # print(full_dataset)
+        print(f"Balanced dataset class distribution: {Counter([sample[1] for sample in full_dataset.samples])}")
 
         # Split dataset into training and validation sets
         indices = list(range(len(full_dataset.samples)))
@@ -110,33 +105,23 @@ if __name__ == "__main__":
         # Model, Loss, and Optimizer
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = SimpleCNN(num_classes=len(full_dataset.classes)).to(device)
-        criterion = nn.CrossEntropyLoss()
+
+        # Class weights for loss function
+        balanced_class_counts = Counter([sample[1] for sample in full_dataset.samples])
+        class_weights = torch.tensor([1 / balanced_class_counts[i] for i in range(len(full_dataset.classes))], device=device)
+        criterion = nn.CrossEntropyLoss(weight=class_weights)
+
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", patience=3)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", patience=10)
 
         # Training Loop
         best_val_loss = float("inf")
 
-        # class_counts = Counter([full_dataset.samples[i][1] for i in train_idx])  # Class counts within train_idx
-        # num_classes = len(full_dataset.classes)
-
-        # # Randomly sample 50% of the training data from train_idx
-        # class_indices = []
-        # num_samples = []
-        # num_to_sample = []
-        # for class_idx in range(num_classes):
-        #     # Get all indices of the current class within train_idx
-        #     class_indices.append([idx for idx in train_idx if full_dataset.samples[idx][1] == class_idx])
-        #     num_samples.append(len(class_indices[class_idx]))
-        #     # Determine how many samples to take from this class
-        #     num_to_sample.append(int(max(1, min((len(train_idx) * 0.5) // num_classes, num_samples[class_idx]))))
-        # print(num_to_sample)
-
         for epoch in range(epochs):
             # Randomly sample 50% of the training data from train_idx
-            random.seed(42)
+            # random.seed(42)
             sampled_indices = random.sample(train_idx, int(len(train_idx) * 0.1))
-            print(f"Next epoch class distribution: {Counter([full_dataset.samples[idx][1] for idx in sampled_indices])}")
+            # print(f"Next epoch class distribution: {Counter([full_dataset.samples[idx][1] for idx in sampled_indices])}")
             # Create a new DataLoader with the sampled indices
             train_loader = DataLoader(
                 full_dataset, batch_size=batch_size, sampler=SubsetRandomSampler(sampled_indices), num_workers=2
