@@ -58,7 +58,7 @@ if __name__ == "__main__":
         # Hyperparameters
         batch_size = 64
         epochs = 500
-        lr = 0.001
+        lr = 0.01
 
         # Data transformations with augmentation
         transform = transforms.Compose([
@@ -74,8 +74,30 @@ if __name__ == "__main__":
         # Dataset and Weighted Sampler
         full_dataset = datasets.ImageFolder(train_dir, transform=transform)
 
+        # Balancing dataset by duplicating smaller classes
+        class_counts = Counter([sample[1] for sample in full_dataset.samples])
+        max_class_count = max(class_counts.values())
+
+        balanced_samples = []
+        for class_idx in range(len(full_dataset.classes)):
+            # Get all samples for the current class
+            class_samples = [sample for sample in full_dataset.samples if sample[1] == class_idx]
+            
+            # Duplicate samples to match the size of the largest class
+            num_to_add = max_class_count - len(class_samples)
+            if num_to_add > 0:
+                duplicated_samples = random.choices(class_samples, k=num_to_add)
+                class_samples.extend(duplicated_samples)
+            
+            balanced_samples.extend(class_samples)
+
+        # Create a new balanced dataset
+        full_dataset.samples = balanced_samples
+        # print(f"Balanced dataset class distribution: {Counter([sample[1] for sample in full_dataset.samples])}")
+        # print(full_dataset)
+
         # Split dataset into training and validation sets
-        indices = list(range(len(full_dataset)))
+        indices = list(range(len(full_dataset.samples)))
         random.seed(42)
         random.shuffle(indices)
 
@@ -95,36 +117,35 @@ if __name__ == "__main__":
         # Training Loop
         best_val_loss = float("inf")
 
-        class_counts = Counter([full_dataset.samples[i][1] for i in train_idx])  # Class counts within train_idx
-        num_classes = len(full_dataset.classes)
+        # class_counts = Counter([full_dataset.samples[i][1] for i in train_idx])  # Class counts within train_idx
+        # num_classes = len(full_dataset.classes)
 
-        # Randomly sample 50% of the training data from train_idx
-        class_indices = []
-        num_samples = []
-        num_to_sample = []
-        for class_idx in range(num_classes):
-            # Get all indices of the current class within train_idx
-            class_indices.append([idx for idx in train_idx if full_dataset.samples[idx][1] == class_idx])
-            num_samples.append(len(class_indices[class_idx]))
-            # Determine how many samples to take from this class
-            num_to_sample.append(int(max(1, min((len(train_idx) * 0.5) // num_classes, num_samples[class_idx]))))
-        print(num_to_sample)
+        # # Randomly sample 50% of the training data from train_idx
+        # class_indices = []
+        # num_samples = []
+        # num_to_sample = []
+        # for class_idx in range(num_classes):
+        #     # Get all indices of the current class within train_idx
+        #     class_indices.append([idx for idx in train_idx if full_dataset.samples[idx][1] == class_idx])
+        #     num_samples.append(len(class_indices[class_idx]))
+        #     # Determine how many samples to take from this class
+        #     num_to_sample.append(int(max(1, min((len(train_idx) * 0.5) // num_classes, num_samples[class_idx]))))
+        # print(num_to_sample)
 
         for epoch in range(epochs):
             # Randomly sample 50% of the training data from train_idx
-            sampled_indices = []
-            for class_idx in range(num_classes):
-                sampled_indices.extend(random.sample(class_indices[class_idx], num_to_sample[class_idx]))
-
+            random.seed(42)
+            sampled_indices = random.sample(train_idx, int(len(train_idx) * 0.1))
+            print(f"Next epoch class distribution: {Counter([full_dataset.samples[idx][1] for idx in sampled_indices])}")
             # Create a new DataLoader with the sampled indices
-            sampled_loader = DataLoader(
+            train_loader = DataLoader(
                 full_dataset, batch_size=batch_size, sampler=SubsetRandomSampler(sampled_indices), num_workers=2
             )
 
             # Training Phase
             model.train()
             running_loss = 0.0
-            for images, labels in tqdm(sampled_loader, desc=f"Training Epoch {epoch + 1}"):
+            for images, labels in tqdm(train_loader, desc=f"Training Epoch {epoch + 1}"):
                 images, labels = images.to(device), labels.to(device)
                 optimizer.zero_grad()
                 outputs = model(images)
@@ -133,7 +154,7 @@ if __name__ == "__main__":
                 optimizer.step()
                 running_loss += loss.item()
 
-            avg_train_loss = running_loss / len(sampled_loader)
+            avg_train_loss = running_loss / len(train_loader)
 
             # Log learning rate
             current_lr = scheduler.optimizer.param_groups[0]["lr"]
