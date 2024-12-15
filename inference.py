@@ -1,11 +1,37 @@
 import torch
-from torchvision import transforms, models
+from torchvision import transforms
 import torch.nn as nn
 from PIL import Image
 import os
 import argparse
 import pandas as pd
 from tqdm import tqdm
+
+# Define the same SimpleCNN model as in train.py
+class SimpleCNN(nn.Module):
+    def __init__(self, num_classes):
+        super(SimpleCNN, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(16, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+        self.fc = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(32 * 12 * 12, 64),
+            nn.ReLU(),
+            nn.Dropout(p=0.5),
+            nn.Linear(64, num_classes)
+        )
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.fc(x)
+        return x
+
 
 # Argument parser
 parser = argparse.ArgumentParser(description="Inference script for emotion classification.")
@@ -34,13 +60,7 @@ transform = transforms.Compose([
 ])
 
 # Load model
-model = models.efficientnet_b0(weights=None)  # No pretrained weights for inference
-model.features[0][0] = nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1, bias=False)  # Grayscale adjustment
-model.classifier[1] = nn.Sequential(
-    nn.BatchNorm1d(1280),
-    nn.Dropout(p=0.5),
-    nn.Linear(1280, 7)  # Update to match the number of classes
-)
+model = SimpleCNN(num_classes=7)  # Update the number of classes as in training
 model = model.to(device)
 
 # Load weights
@@ -67,8 +87,8 @@ with torch.no_grad():
             predictions.append(predicted.item())
             filenames.append(img_name)
 
-# Process filenames to remove ".jpg"
-filenames = [fname.replace('.jpg', '') for fname in filenames]
+# Process filenames to remove extensions
+filenames = [fname.rsplit('.', 1)[0] for fname in filenames]
 
 # Save predictions to CSV
 print(f"Saving predictions to {submission_output_path}")

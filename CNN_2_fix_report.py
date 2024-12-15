@@ -1,6 +1,6 @@
 import argparse
 import torch
-from torch.utils.data import DataLoader, SubsetRandomSampler, WeightedRandomSampler
+from torch.utils.data import DataLoader, SubsetRandomSampler
 from torchvision import datasets, transforms
 import torch.nn as nn
 import torch.optim as optim
@@ -25,10 +25,9 @@ class SimpleCNN(nn.Module):
         )
         self.fc = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(32 * 12 * 12, 64),
+            nn.Linear(32 * 12 * 12, 128),  # Adjusted for 48x48 input
             nn.ReLU(),
-            nn.Dropout(p=0.5),
-            nn.Linear(64, num_classes)
+            nn.Linear(128, num_classes)
         )
 
     def forward(self, x):
@@ -60,21 +59,16 @@ if __name__ == "__main__":
         epochs = 500
         lr = 0.001
 
-        # Data transformations with augmentation
+        # Data transformations
         transform = transforms.Compose([
             transforms.Grayscale(),
             transforms.Resize((48, 48)),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomRotation(15),
-            transforms.RandomCrop(48, padding=4),
             transforms.ToTensor(),
             transforms.Normalize((0.5,), (0.5,))
         ])
 
-        # Dataset and Weighted Sampler
+        # Dataset and DataLoader
         full_dataset = datasets.ImageFolder(train_dir, transform=transform)
-
-        # Split dataset into training and validation sets
         indices = list(range(len(full_dataset)))
         random.seed(42)
         random.shuffle(indices)
@@ -82,15 +76,18 @@ if __name__ == "__main__":
         train_split = int(0.8 * len(indices))
         train_idx, val_idx = indices[:train_split], indices[train_split:]
 
-        train_loader = DataLoader(full_dataset, batch_size=batch_size, sampler=SubsetRandomSampler(train_idx), num_workers=2)
-        val_loader = DataLoader(full_dataset, batch_size=batch_size, sampler=SubsetRandomSampler(val_idx), num_workers=2)
+        train_loader = DataLoader(
+            full_dataset, batch_size=batch_size, sampler=SubsetRandomSampler(train_idx), num_workers=2
+        )
+        val_loader = DataLoader(
+            full_dataset, batch_size=batch_size, sampler=SubsetRandomSampler(val_idx), num_workers=2
+        )
 
         # Model, Loss, and Optimizer
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = SimpleCNN(num_classes=len(full_dataset.classes)).to(device)
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", patience=3)
+        optimizer = optim.Adam(model.parameters(), lr=lr)
 
         # Training Loop
         best_val_loss = float("inf")
@@ -108,10 +105,6 @@ if __name__ == "__main__":
                 running_loss += loss.item()
 
             avg_train_loss = running_loss / len(train_loader)
-
-            # Log learning rate
-            current_lr = scheduler.optimizer.param_groups[0]["lr"]
-            print(f"\nLearning Rate: {current_lr:.6f}")
 
             # Validation Phase
             model.eval()
@@ -137,9 +130,6 @@ if __name__ == "__main__":
             print(f"\nEpoch {epoch + 1}/{epochs}")
             print(f"Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}, Val Accuracy: {val_accuracy:.2f}%")
             print(classification_report(all_labels, all_preds, target_names=full_dataset.classes, digits=4, zero_division=0))
-
-            # Adjust learning rate
-            scheduler.step(avg_val_loss)
 
             torch.save(model.state_dict(), f"{output_path}{epoch+1}.pth")
 
