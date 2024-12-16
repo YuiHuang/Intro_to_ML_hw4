@@ -10,6 +10,7 @@ import os
 import random
 import sys
 from tqdm import tqdm
+import math
 
 # Define a Simple CNN Model
 class SimpleCNN(nn.Module):
@@ -64,9 +65,9 @@ if __name__ == "__main__":
         transform = transforms.Compose([
             transforms.Grayscale(),
             transforms.Resize((48, 48)),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomRotation(15),
-            transforms.RandomCrop(48, padding=4),
+            # transforms.RandomHorizontalFlip(),
+            # transforms.RandomRotation(15),
+            # transforms.RandomCrop(48, padding=4),
             transforms.ToTensor(),
             transforms.Normalize((0.5,), (0.5,))
         ])
@@ -88,7 +89,13 @@ if __name__ == "__main__":
         # Model, Loss, and Optimizer
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = SimpleCNN(num_classes=len(full_dataset.classes)).to(device)
-        criterion = nn.CrossEntropyLoss()
+
+        # Class weights for loss function
+        class_counts = Counter([sample[1] for sample in full_dataset.samples])
+        class_weights = torch.tensor([1 / math.sqrt(class_counts[i]) for i in range(len(full_dataset.classes))], device=device)
+        criterion = nn.CrossEntropyLoss(weight=class_weights)
+        # criterion = nn.CrossEntropyLoss()
+
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", patience=3)
 
