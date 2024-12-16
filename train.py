@@ -64,9 +64,9 @@ if __name__ == "__main__":
         transform = transforms.Compose([
             transforms.Grayscale(),
             transforms.Resize((48, 48)),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomRotation(15),
-            transforms.RandomCrop(48, padding=4),
+            # transforms.RandomHorizontalFlip(),
+            # transforms.RandomRotation(15),
+            # transforms.RandomCrop(48, padding=4),
             transforms.ToTensor(),
             transforms.Normalize((0.5,), (0.5,))
         ])
